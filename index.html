@@ -269,11 +269,14 @@
   }
   function initDate(){
     const d = getById('date');
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth()+1).padStart(2,'0');
-    const da = String(today.getDate()).padStart(2,'0');
-    d.min = `${y}-${m}-${da}`;
+    const minDate = new Date();
+    minDate.setDate(minDate.getDate() + 7); // earliest booking is 1 week away
+    const y = minDate.getFullYear();
+    const m = String(minDate.getMonth()+1).padStart(2,'0');
+    const da = String(minDate.getDate()).padStart(2,'0');
+    const minStr = `${y}-${m}-${da}`;
+    d.min = minStr;
+    if(!d.value || d.value < minStr){ d.value = minStr; }
   }
   function initTimes(){
     const t = getById('time'); t.innerHTML = '<option value="">Select…</option>';
@@ -320,11 +323,15 @@
   function valid(data){
     const required = ['apptType','centre','date','time','fullName','lic','email','phone'];
     for(const k of required){ if(!data[k]) return false; }
+    // Enforce 7-day min even if user types a date earlier than min
+    const min = new Date(); min.setDate(min.getDate()+7);
+    const picked = new Date(`${data.date}T00:00:00`);
+    if(picked < new Date(min.getFullYear(),min.getMonth(),min.getDate())) return false;
     return true;
   }
 
   function summaryText(b){
-    return `Vic roads booking portal — DEMO\n\nType: ${b.apptType}\nCentre: ${b.centre}\nWhen: ${b.date} at ${b.time}\nName: ${b.fullName}\nLicence: ${b.lic}\nEmail: ${b.email}\nPhone: ${b.phone}\nNotes: ${b.notes || '-'}\n\nThis is a personal demo only.`;
+    return `Vic roads booking portal\n\nType: ${b.apptType}\nCentre: ${b.centre}\nWhen: ${b.date} at ${b.time}\nName: ${b.fullName}\nLicence: ${b.lic}\nEmail: ${b.email}\nPhone: ${b.phone}\nNotes: ${b.notes || '-'}\n\nThis is a personal demo only.`;
   }
 
   function msg(id,text){ const el=getById(id); el.textContent=text; setTimeout(()=>{el.textContent='';}, 3500); }
@@ -402,6 +409,15 @@
       console.assert(valid(sample)===true, 'valid() should return true for complete sample');
       console.assert(summaryText(sample).includes('Test User'), 'summaryText() should include name');
       const icsBlob = toICS(sample); console.assert(icsBlob && icsBlob.type==='text/calendar', 'toICS() should return calendar blob');
+      // extra tests
+      const ts = timesForDate('2030-01-01');
+      console.assert(Array.isArray(ts) && ts.length>=11 && ts.length<=16, 'timesForDate() length should be between 11 and 16');
+      console.assert(/^\d{2}:\d{2}$/.test(ts[0]), 'timesForDate() items should be HH:MM');
+      console.assert(centres.includes('Box Hill'), 'centres should contain Box Hill');
+      // min date enforcement test (synthetic)
+      const today = new Date(); const min = new Date(today); min.setDate(min.getDate()+7);
+      const minStr = `${min.getFullYear()}-${String(min.getMonth()+1).padStart(2,'0')}-${String(min.getDate()).padStart(2,'0')}`;
+      console.assert(typeof getById('date').min === 'string' && getById('date').min === minStr, 'date.min should be today+7 days');
       console.log('Self-tests passed');
     }catch(err){ console.warn('Self-tests failed', err); }
   }
@@ -421,15 +437,17 @@
     // init form + data
     initCentres(); initDate(); renderList(); getById('year').textContent=new Date().getFullYear();
     getById('date').addEventListener('change', initTimes);
+    // populate initial times for the enforced min date
+    initTimes();
 
     getById('bookingForm').addEventListener('submit', (e)=>{
       e.preventDefault(); const b=getFormData();
-      if(!valid(b)){ msg('formMsg','Please complete all required fields.'); return; }
+      if(!valid(b)){ msg('formMsg','Please complete all required fields. (Earliest available date is in 7 days.)'); return; }
       showConfirm(b); msg('formMsg','Created a booking (demo). You can also save it locally.');
     });
 
     getById('saveLocal').addEventListener('click',()=>{
-      const b=getFormData(); if(!valid(b)){ msg('formMsg','Please complete all required fields before saving.'); return; }
+      const b=getFormData(); if(!valid(b)){ msg('formMsg','Please complete all required fields before saving. (Earliest available date is in 7 days.)'); return; }
       const all = loadAll(); all.unshift(b); saveAll(all); renderList(); msg('manageMsg','Saved locally.');
     });
 
